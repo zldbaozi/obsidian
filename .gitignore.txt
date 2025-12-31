@@ -1,0 +1,4 @@
+.obsidian/cache/
+.obsidian/workspace.json
+.obsidian/appearance.json
+.trash/
