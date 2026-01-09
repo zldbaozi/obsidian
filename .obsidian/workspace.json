@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "PaDiM/算法原理修改.md",
+                "file": "开发/焊盘匹配.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "算法原理修改"
+              "title": "焊盘匹配"
             }
           }
         ]
@@ -197,8 +197,11 @@
   },
   "active": "98cf01f44af9ea9d",
   "lastOpenFiles": [
-    "markdown语法/markdown语法.md",
+    "开发/未命名.md",
+    "开发/焊盘匹配.md",
     "PaDiM/算法原理修改.md",
+    "开发",
+    "markdown语法/markdown语法.md",
     "播客阅读/自我进化论.md",
     "播客阅读",
     "新建文本文档.txt",
