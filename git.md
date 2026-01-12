@@ -39,5 +39,7 @@ git remote remove padim
 ```
 将本地 Git 仓库中当前分支的「所有文件」，从 Git 版本库（.git 目录）「检出 / 恢复」到本地工作区
 git checkout . 
+克隆远程仓库的【windows分支】到本地depend文件夹
+git clone -b windows git@192.168.101.149:Temp/Depend.git depend
 ```
 
