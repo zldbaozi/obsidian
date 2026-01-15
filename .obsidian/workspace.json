@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "git.md",
+                "file": "开发/焊盘匹配.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "git"
+              "title": "焊盘匹配"
             }
           }
         ],
@@ -212,18 +212,18 @@
   },
   "active": "6ca394f0e36fc8ae",
   "lastOpenFiles": [
+    "PaDiM/算法原理修改.md",
+    "PaDiM/实验数据及分析.md",
     "开发/焊盘匹配.md",
     "git.md",
     "git",
     "开发/未命名.md",
-    "PaDiM/算法原理修改.md",
     "开发",
     "markdown语法/markdown语法.md",
     "播客阅读/自我进化论.md",
     "播客阅读",
     "新建文本文档.txt",
     "PaDiM/Pasted image 20251230111829.png",
-    "PaDiM/实验数据及分析.md",
     "欢迎.md",
     "markdown语法",
     "PaDiM"
