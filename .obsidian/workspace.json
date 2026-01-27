@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "开发/焊盘匹配.md",
+                "file": "PaDiM/算法原理修改.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "焊盘匹配"
+              "title": "算法原理修改"
             }
           }
         ],
@@ -212,8 +212,9 @@
   },
   "active": "6ca394f0e36fc8ae",
   "lastOpenFiles": [
-    "PaDiM/算法原理修改.md",
+    "PaDiM/Pasted image 20251230111829.png",
     "开发/焊盘匹配.md",
+    "PaDiM/算法原理修改.md",
     "开发/未命名.md",
     "PaDiM/实验数据及分析.md",
     "git.md",
@@ -223,7 +224,6 @@
     "播客阅读/自我进化论.md",
     "播客阅读",
     "新建文本文档.txt",
-    "PaDiM/Pasted image 20251230111829.png",
     "欢迎.md",
     "markdown语法",
     "PaDiM"
