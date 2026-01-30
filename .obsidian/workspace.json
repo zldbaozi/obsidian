@@ -13,20 +13,6 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "开发/焊盘匹配.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "焊盘匹配"
-            }
-          },
-          {
-            "id": "6ca394f0e36fc8ae",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
                 "file": "PaDiM/算法原理修改.md",
                 "mode": "source",
                 "source": false
@@ -35,8 +21,7 @@
               "title": "算法原理修改"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "vertical"
@@ -195,7 +180,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 282.5
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -210,11 +195,11 @@
       "local-backup:Run local backup": false
     }
   },
-  "active": "6ca394f0e36fc8ae",
+  "active": "98cf01f44af9ea9d",
   "lastOpenFiles": [
-    "PaDiM/Pasted image 20251230111829.png",
     "开发/焊盘匹配.md",
     "PaDiM/算法原理修改.md",
+    "PaDiM/Pasted image 20251230111829.png",
     "开发/未命名.md",
     "PaDiM/实验数据及分析.md",
     "git.md",
