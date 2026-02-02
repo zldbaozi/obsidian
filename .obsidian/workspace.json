@@ -35,8 +35,7 @@
               "title": "未命名"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "vertical"
@@ -212,10 +211,10 @@
       "local-backup:Run local backup": false
     }
   },
-  "active": "d8593a30e9e36868",
+  "active": "98cf01f44af9ea9d",
   "lastOpenFiles": [
-    "智能AOI/智能aoi实现思路.md",
     "未命名.md",
+    "智能AOI/智能aoi实现思路.md",
     "git.md",
     "未命名",
     "智能AOI/padim/Padim算法原理修改.md",
