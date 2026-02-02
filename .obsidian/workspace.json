@@ -20,8 +20,23 @@
               "icon": "lucide-file",
               "title": "智能aoi实现思路"
             }
+          },
+          {
+            "id": "d8593a30e9e36868",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "未命名.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "未命名"
+            }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -78,7 +93,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 200
+    "width": 200,
+    "collapsed": true
   },
   "right": {
     "id": "0cf80661acb70b47",
@@ -180,7 +196,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 282.5
+    "width": 282.5,
+    "collapsed": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -195,17 +212,19 @@
       "local-backup:Run local backup": false
     }
   },
-  "active": "98cf01f44af9ea9d",
+  "active": "d8593a30e9e36868",
   "lastOpenFiles": [
-    "智能AOI/padim/Padim算法原理修改.md",
+    "git.md",
     "智能AOI/智能aoi实现思路.md",
+    "未命名.md",
+    "未命名",
+    "智能AOI/padim/Padim算法原理修改.md",
     "智能AOI/padim",
     "Pasted image 20260130180145.png",
     "开发/焊盘匹配.md",
     "智能AOI/padim/Pasted image 20251230111829.png",
     "开发/未命名.md",
     "智能AOI/padim/实验数据及分析.md",
-    "git.md",
     "git",
     "开发",
     "markdown语法/markdown语法.md",
