@@ -29,7 +29,7 @@
 4. **展示**：上位机读取更新后的 JSON -> 在 `01_Input_Big` 的原图上画框 -> 存入 `04_Output_Result`。
 5. **闭环训练 (人工介入)**：
     - 每天下班前，人工把 `03` 里没判断对的图，拖进 `Dataset_Review` 里的 `real_ng` 或 `false_ng`。
-    - 如果是被 PaDiM 误报的良品，还可以把原图拖进 `Dataset_PaDiM/good`。
+    - 如果是被 PaDiM 误报的良品，还可以把原图拖进 `Dataset_PaDiM/good`（后续可以实现自动移动，如果一整张大图中都是误报的小图）
 
 
 
