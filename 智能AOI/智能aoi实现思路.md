@@ -32,6 +32,30 @@
     - 如果是被 PaDiM 误报的良品，还可以把原图拖进 `Dataset_PaDiM/good`（后续可以实现自动移动，如果一整张大图中都是误报的小图）
 
 
+E:\Code\AOI_Integrated\
+    ├── config\                 # [预留] 存放系统配置文件
+    ├── data\                   # [仓库] 存放所有训练数据 (Training Data)
+    │   ├── dataset_padim\      # PaDiM 训练集 (良品图片)
+    │   └── dataset_review\     # 复判模型训练集
+    │       ├── train\
+    │       │   ├── false_ng\   # 放入PaDiM误报的良品
+    │       │   └── real_ng\    # 放入因缺陷被挑出的坏品
+    │
+    ├── models\                 # [产出] 存放训练好的模型文件
+    │   ├── padim\              # 存放 padim_backbone.onnx 等
+    │   └── resnet\             # 存放 resnet18_review.onnx
+    │
+    ├── run_data\               # [现场] 运行时数据流 (已从 AOI_Project 迁移至此)
+    │   ├── 01_Input\           # 输入图片放入此
+    │   ├── 03_Pending_Review\  # 中间层: C++ 输出的 Pending 区
+    │   └── 04_Output_Result\   # 结果层: Real_NG / False_Alarm / Manual_Review
+    │
+    └── src\
+        ├── padim_infer\        # (建议) 将你的 C++ 代码移动到这里
+        ├── padim_train\        # (建议) 将 PaDiM 训练脚本移动到这里
+        └── review_system\      # [已更新] 存放 review_trainer.py 和 auto_judge_service.py
+
+
 
 
 
