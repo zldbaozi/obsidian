@@ -1,5 +1,6 @@
 {
   "theme": "obsidian",
   "textFontFamily": "Maple Mono NF CN",
-  "monospaceFontFamily": "Maple Mono NF CN"
+  "monospaceFontFamily": "Maple Mono NF CN",
+  "baseFontSize": 11
 }
