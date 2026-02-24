@@ -82,6 +82,237 @@ E:\Code\AOI_Integrated\
     - 如果 `Train Loss` 很低但 `Val Loss` 很高，说明**数据太少**（过拟合）。
 
 
+### 既然遇到了这类过拟合欠拟合的问题，那就顺便总结一下：
+- #### 过拟合解决策略：模型对训练数据中的噪声过度敏感（死学习，不会变通）
+	1. 数据层面：
+		- 数据增强
+		- 数据清洗
+	2. 模型架构与正则化策略：
+```C++
+class RegularizedModel(nn.Module):
+    """集成多种正则化技术的模型"""
+    
+    def __init__(self, base_model, config):
+        super().__init__()
+        self.base_model = base_model
+        self.config = config
+        
+        # 添加Dropout层
+        self.dropout_layers = nn.ModuleList()
+        for i, layer in enumerate(self.get_fc_layers()):
+            if config.get(f'dropout_{i}', 0.5) > 0:
+                self.dropout_layers.append(
+                    nn.Dropout(config[f'dropout_{i}'])
+                )
+        
+        # 权重约束
+        self.weight_constraint = config.get('weight_constraint', None)
+        
+    def forward(self, x):
+        x = self.base_model(x)
+        
+        # 应用Dropout
+        for dropout_layer in self.dropout_layers:
+            x = dropout_layer(x)
+        
+        return x
+    
+    def apply_weight_constraints(self):
+        """应用权重约束"""
+        if self.weight_constraint == 'orthogonal':
+            for param in self.parameters():
+                if param.dim() >= 2:
+                    nn.init.orthogonal_(param)
+        elif self.weight_constraint == 'spectral_norm':
+            for name, module in self.named_modules():
+                if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                    nn.utils.spectral_norm(module)
+    
+    def get_fc_layers(self):
+        """获取全连接层"""
+        fc_layers = []
+        for module in self.base_model.modules():
+            if isinstance(module, nn.Linear):
+                fc_layers.append(module)
+        return fc_layers
+		
+		```
+		
+```C++
+class AdvancedRegularization:
+    """高级正则化技术集合"""
+    
+    @staticmethod
+    def label_smoothing_loss(pred, target, smoothing=0.1, num_classes=None):
+        """标签平滑损失"""
+        if num_classes is None:
+            num_classes = pred.size(1)
+        
+        smoothed_targets = torch.zeros_like(pred).scatter_(
+            1, target.unsqueeze(1), 1 - smoothing
+        )
+        smoothed_targets += smoothing / num_classes
+        
+        log_preds = F.log_softmax(pred, dim=1)
+        loss = -torch.sum(smoothed_targets * log_preds, dim=1)
+        return loss.mean()
+    
+    @staticmethod
+    def stochastic_depth(layer, p, mode='train'):
+        """随机深度（用于ResNet等）"""
+        if mode == 'train' and torch.rand(1).item() < p:
+            return nn.Identity()
+        return layer
+    
+    @staticmethod
+    def weight_decay_skip_bn(model, weight_decay=1e-4):
+        """跳过BatchNorm的权重衰减"""
+        decay = []
+        no_decay = []
+        
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue
+            if 'bn' in name or 'bias' in name:
+                no_decay.append(param)
+            else:
+                decay.append(param)
+        
+        return [
+            {'params': decay, 'weight_decay': weight_decay},
+            {'params': no_decay, 'weight_decay': 0.0}
+        ]
+    
+    @staticmethod
+    def gradient_clipping(model, max_norm=1.0, norm_type=2):
+        """梯度裁剪"""
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(), 
+            max_norm=max_norm, 
+            norm_type=norm_type
+        )
+```
+
+	3. 训练策略优化：
+```C++
+class AdaptiveLearningRateScheduler:
+    """自适应学习率调度器"""
+    
+    def __init__(self, optimizer, config):
+        self.optimizer = optimizer
+        self.config = config
+        self.schedulers = []
+        
+        # 组合多个调度器
+        if config.get('use_warmup', True):
+            self.schedulers.append(
+                self._get_warmup_scheduler()
+            )
+        
+        if config.get('use_cosine', True):
+            self.schedulers.append(
+                self._get_cosine_scheduler()
+            )
+        
+        if config.get('use_plateau', True):
+            self.schedulers.append(
+                self._get_plateau_scheduler()
+            )
+    
+    def _get_warmup_scheduler(self):
+        """预热学习率"""
+        from torch.optim.lr_scheduler import LambdaLR
+        
+        def warmup_lambda(epoch):
+            if epoch < self.config.get('warmup_epochs', 5):
+                return (epoch + 1) / self.config['warmup_epochs']
+            return 1.0
+        
+        return LambdaLR(self.optimizer, warmup_lambda)
+    
+    def _get_cosine_scheduler(self):
+        """余弦退火"""
+        from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+        
+        return CosineAnnealingWarmRestarts(
+            self.optimizer,
+            T_0=self.config.get('T_0', 10),
+            T_mult=self.config.get('T_mult', 2),
+            eta_min=self.config.get('eta_min', 1e-6)
+        )
+    
+    def _get_plateau_scheduler(self):
+        """基于验证损失的调度"""
+        from torch.optim.lr_scheduler import ReduceLROnPlateau
+        
+        return ReduceLROnPlateau(
+            self.optimizer,
+            mode='min',
+            factor=0.5,
+            patience=self.config.get('plateau_patience', 5),
+            min_lr=1e-6,
+            verbose=True
+        )
+    
+    def step(self, val_loss=None):
+        """执行调度步骤"""
+        for scheduler in self.schedulers:
+            if isinstance(scheduler, ReduceLROnPlateau):
+                if val_loss is not None:
+                    scheduler.step(val_loss)
+            else:
+                scheduler.step()
+```
+
+```C++
+# 优化器的选择与配置
+def get_optimizer(model, config):
+    """获取优化器（针对过拟合优化）"""
+    optimizer_type = config.get('optimizer', 'adamw')
+    lr = config.get('lr', 1e-3)
+    weight_decay = config.get('weight_decay', 1e-4)
+    
+    # 分离BatchNorm参数（不应用权重衰减）
+    params = AdvancedRegularization.weight_decay_skip_bn(model, weight_decay)
+    
+    if optimizer_type == 'adamw':
+        return torch.optim.AdamW(
+            params,
+            lr=lr,
+            betas=(0.9, 0.999),
+            eps=1e-8,
+            weight_decay=weight_decay
+        )
+    elif optimizer_type == 'sgd':
+        return torch.optim.SGD(
+            params,
+            lr=lr,
+            momentum=0.9,
+            nesterov=True,
+            weight_decay=weight_decay
+        )
+    elif optimizer_type == 'lamb':
+        # 需要安装第三方库：pip install pytorch-lamb
+        from pytorch_lamb import Lamb
+        return Lamb(
+            params,
+            lr=lr,
+            betas=(0.9, 0.999),
+            eps=1e-8,
+            weight_decay=weight_decay
+        )
+```
+
+	3. 集成学习与模型选择：
+	4. 监控与评估系统：
+
+- #### 欠拟合解决策略：老师给的题都做不好，更别谈去举一反三
+	1. 模型架构优化策略:
+	2. 训练策略优化：
+
+
+
+
 
 
 
