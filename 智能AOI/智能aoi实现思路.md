@@ -97,7 +97,7 @@ class RegularizedModel(nn.Module):
         self.base_model = base_model
         self.config = config
         
-        # 添加Dropout层
+        # 添加Dropout层 (通过随机丢弃神经元防止过拟合)
         self.dropout_layers = nn.ModuleList()
         for i, layer in enumerate(self.get_fc_layers()):
             if config.get(f'dropout_{i}', 0.5) > 0:
@@ -747,6 +747,296 @@ class GradientOptimization:
 
 
 
+之前的 Loss 卡在 **0.4** 左右（意味着模型对正确答案的平均信心只有 67% 左右），我们需要进一步逼近极限。
+![[Pasted image 20260224142653.png]]
+我将进行以下几项关键调整来压低 Loss：
+
+1. **降低学习率，使用余弦退火**：SGD 的 [StepLR](vscode-file://vscode-app/e:/Microsoft%20VS%20Code/072586267e/resources/app/out/vs/code/electron-browser/workbench/workbench.html) 降得太猛了（每 7 轮除以 10），导致模型后期“走不动”。改回 `CosineAnnealing`，让它在训练末期能细腻地寻找更低点。
+2. **解冻更多层 (Layer 2)**：既然现在没有过拟合，说明数据撑得住。我们可以尝试解冻 `Layer 2`，让模型从更浅层开始调整特征（例如边缘、纹理的提取方式）。
+3. **Label Smoothing (标签平滑)**：重新引入轻微的 `label_smoothing=0.05`。这听起来反直觉，但它能防止模型在“边缘样本”上钻牛角尖导致 Loss 爆炸，反而有助于整体 Loss 下降。
+4. **增加 Epoch**：现在的趋势还在降，50 轮可能刚好还没跑完，延长到 100 轮
 
 
+我已经做了以下针对性调整：
+
+1. **降低初始学习率（10倍）**：
+    
+    - 之前的初始 LR (Layer4=1e-3, FC=1e-2) 太大了，容易跳过最优解。
+    - 现在调整为更保守的配置：**Layer3=1e-4, Layer4=2e-4, Head=2e-3**。这能让模型更仔细地搜寻参数空间。
+2. **更强的正则化**：
+    
+    - [weight_decay](vscode-file://vscode-app/e:/Microsoft%20VS%20Code/072586267e/resources/app/out/vs/code/electron-browser/workbench/workbench.html) 从 `1e-4` 增加到 `5e-4`。这有助于压制过拟合，让 Loss 更平滑。
+3. **使用 CosineAnnealingLR**：
+    
+    - 相比之前简单粗暴的 `StepLR`（每7轮砍一刀），[CosineAnnealingLR](vscode-file://vscode-app/e:/Microsoft%20VS%20Code/072586267e/resources/app/out/vs/code/electron-browser/workbench/workbench.html) 会让学习率像余弦函数一样平滑下降直到几乎为0。这通常能帮助模型在训练后期收敛到更低的 Loss。
+4. **引入 Label Smoothing (0.1)**：
+    
+    - 这会让 Loss 曲线更平滑，防止模型对某些特定样本过度自信（也就是防止 Loss 突然极其大或极其小）。虽然这可能会让 Loss 数值看起来不像 0.01 那么低（因为平滑后的极限 Loss 不是 0），但它能显著提升泛化能力和准确率。
+5. **增加 Epoch 数**：
+    
+    - 既然调低了学习率，就需要更多的时间。我把默认 [num_epochs](vscode-file://vscode-app/e:/Microsoft%20VS%20Code/072586267e/resources/app/out/vs/code/electron-browser/workbench/workbench.html) 增加到了 **100**。
+
+```C++
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import datasets, models, transforms
+from torch.utils.data import DataLoader, random_split, WeightedRandomSampler
+import os
+import copy
+import argparse
+import time
+from sklearn.metrics import confusion_matrix, classification_report
+import torch.nn.functional as F
+
+# 新增：保持长宽比的填充类
+class SquarePad:
+    def __call__(self, image):
+        w, h = image.size
+        max_wh = max(w, h)
+        hp = int((max_wh - w) / 2)
+        vp = int((max_wh - h) / 2)
+        padding = (hp, vp, max_wh - w - hp, max_wh - h - vp)
+        return transforms.functional.pad(image, padding, 0, 'constant')
+  
+def convert_to_tensor_if_needed(obj):
+    if not isinstance(obj, torch.Tensor):
+        return torch.tensor(obj)
+    return obj
+
+class ReviewModelTrainer:
+    def __init__(self, data_root, save_dir, num_epochs=100, batch_size=16, resume=True):
+        """
+        初始化训练器
+        """
+        self.data_root = data_root
+        self.save_dir = save_dir
+        self.model_save_path = os.path.join(save_dir, "resnet18_review.pth")
+        self.onnx_save_path = os.path.join(save_dir, "resnet18_review.onnx")
+        self.num_epochs = num_epochs
+        self.batch_size = batch_size
+        self.resume = resume
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.classes = ['false_ng', 'real_ng'] # 0: 假报警(良品), 1: 真缺陷
+
+        os.makedirs(save_dir, exist_ok=True)
+
+    def _get_start_model(self):
+        # 🔥 优化1：解冻策略调整
+        # Loss 居高不下(0.7左右) 说明模型完全没收敛，可能是特征提取的问题
+        # 我们尝试解冻 Layer3, Layer4, FC，让模型有更多能力学习
+        model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        for name, param in model.named_parameters():
+            if "layer3" in name or "layer4" in name or "fc" in name:
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+        num_ftrs = model.fc.in_features
+        # 🔥 优化2：移除 Dropout
+        # 简单 Linear 层，去除 Dropout 带来的噪声
+        model.fc = nn.Linear(num_ftrs, 2)
+        # 2. 增量学习逻辑
+        if self.resume and os.path.exists(self.model_save_path):
+            print(f"🔄 发现旧模型，正在加载以进行增量训练: {self.model_save_path}")
+            model.load_state_dict(torch.load(self.model_save_path))
+        else:
+            print("🆕 未找到旧模型或选择全新训练，使用 ImageNet 预训练权重。")
+        return model.to(self.device)
+
+    def train(self):
+        print(f"[System] 使用设备: {self.device}")
+        # --- 1. 数据增强 ---
+        # 🔧 调整: 224 可能导致微小缺陷丢失，提升分辨率至 448
+        target_size = (448, 448)
+        # 🔥 优化3：极简增强策略
+        # 移除了所有可能破坏小缺陷的操作 (ColorJitter, Erasing)
+        # 仅保留翻转和旋转，这是最安全的。
+        data_transforms = {
+            'train': transforms.Compose([
+                SquarePad(),
+                transforms.Resize(target_size),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
+                transforms.RandomRotation(15),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+            'val': transforms.Compose([
+                SquarePad(),
+                transforms.Resize(target_size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+        }
+
+        # --- 2. 加载数据 ---
+        if not os.path.exists(self.data_root):
+            print(f"❌ 错误: 数据目录不存在 {self.data_root}")
+            return
+
+        full_dataset = datasets.ImageFolder(self.data_root, data_transforms['train'])
+        class_to_idx = full_dataset.class_to_idx
+        print(f"🗂️ 类别映射: {class_to_idx}")
+        # 自动划分
+        total_size = len(full_dataset)
+        train_size = int(0.8 * total_size)
+        val_size = total_size - train_size
+        if total_size < 5:
+            print("❌ 数据太少，无法训练。")
+            return
+            
+        # 🔧 修改：显式打乱并划分，确保随机性
+        print("🔀 正在执行全局随机打乱 (Manual Shuffle)...")
+        indices = torch.randperm(total_size).tolist()
+        train_indices_list = indices[:train_size]
+        val_indices_list = indices[train_size:]
+        train_dataset = torch.utils.data.Subset(full_dataset, train_indices_list)
+        val_dataset = torch.utils.data.Subset(full_dataset, val_indices_list)
+        # === 🔥 关键修复：使用 WeightedRandomSampler 解决不平衡 ===
+        print("⚖️ 正在计算采样权重 (WeightedRandomSampler)...")
+        # 获取训练集中的所有标签
+        train_indices = train_dataset.indices
+        train_labels = [full_dataset.targets[i] for i in train_indices]
+        count_0 = train_labels.count(0) # false_ng
+        count_1 = train_labels.count(1) # real_ng
+        print(f"   - 假报警(False NG): {count_0} 张")
+        print(f"   - 真缺陷(Real NG) : {count_1} 张")
+        sampler = None
+        if count_0 > 0 and count_1 > 0:
+            # 计算样本权重：数量少的样本权重高
+            weight_0 = 1.0 / count_0
+            weight_1 = 1.0 / count_1
+            samples_weights = [weight_0 if label == 0 else weight_1 for label in train_labels]
+            sampler = WeightedRandomSampler(convert_to_tensor_if_needed(samples_weights), num_samples=len(samples_weights), replacement=True)
+            print(f"   - ✅ 已启用过采样策略，每个 Batch 将包含均衡的正负样本")
+        else:
+            print("⚠️ 警告: 即使划分后也就是某一类样本为0，无法计算权重。")
+
+        # 注意：使用 sampler 时，shuffle 必须为 False
+        dataloaders = {
+            'train': DataLoader(train_dataset, batch_size=self.batch_size, sampler=sampler, shuffle=False, num_workers=0),
+            'val': DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0)
+        }
+        dataset_sizes = {'train': train_size, 'val': val_size}
+        print(f"📊 数据量: 训练集 {train_size} 张, 验证集 {val_size} 张")
+
+        # --- 3. 准备模型 ---
+        model = self._get_start_model()
+
+        # 🔥 使用 Label Smoothing
+        # 它可以防止模型对错误样本过度自信，从而让 Loss 曲线更平滑，泛化更好
+        criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+        # 🔥 优化4：使用更有耐心的 SGDR (SGD with Restarts)
+        # 之前的 LR 虽然让 Loss 下降了，但在 0.4 附近震荡，说明学习率可能还是偏大，或者陷入了平坦极小值
+        optimizer = optim.SGD([
+            {'params': model.layer3.parameters(), 'lr': 1e-4}, # 降低10倍，更精细微调
+            {'params': model.layer4.parameters(), 'lr': 2e-4}, # 降低10倍
+            {'params': model.fc.parameters(), 'lr': 2e-3},     # 降低5倍
+        ], momentum=0.9, weight_decay=5e-4) # 稍微加强一点正则，防止训练太久过拟合
+        # 🔥 优化5：使用 CosineAnnealingLR (不带 Restart，或者长周期)
+        # 让学习率平滑下降到底，这通常能获得最低的最终 Loss
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.num_epochs, eta_min=1e-6)
+
+        # --- 4. 训练循环 ---
+        best_model_wts = copy.deepcopy(model.state_dict())
+        best_acc = 0.0
+
+        start_time = time.time()
+
+        for epoch in range(self.num_epochs):            
+            for phase in ['train', 'val']:
+                if phase == 'train':
+                    model.train()
+                else:
+                    model.eval()
+
+                running_loss = 0.0
+                running_corrects = 0
+
+                for inputs, labels in dataloaders[phase]:
+                    inputs = inputs.to(self.device)
+                    labels = labels.to(self.device)
+
+                    optimizer.zero_grad()
+
+                    with torch.set_grad_enabled(phase == 'train'):
+                        outputs = model(inputs)
+                        _, preds = torch.max(outputs, 1)
+                        loss = criterion(outputs, labels)
+
+                        if phase == 'train':
+                            loss.backward()
+                            optimizer.step()
+
+                    running_loss += loss.item() * inputs.size(0)
+                    running_corrects += torch.sum(preds == labels.data)
+
+                if phase == 'train':
+                    scheduler.step()
+
+                epoch_loss = running_loss / dataset_sizes[phase]
+                epoch_acc = running_corrects.double() / dataset_sizes[phase]
+                # 打印详细日志，监控是否存在过拟合/欠拟合
+                print(f'Epoch {epoch+1}/{self.num_epochs} | {phase.upper()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+
+                # 只有 validation 更好时才更新最佳模型
+                if phase == 'val':
+                    # ⚠️ 简单打印一下最后的预测情况，用于目测分布（不计算完整 CM 以免拖慢）
+                    # 下一次如果 Acc 还是上不去，建议专门写一个 eval 脚本
+                    if epoch_acc >= best_acc:
+                        best_acc = epoch_acc
+                        best_model_wts = copy.deepcopy(model.state_dict())
+        time_elapsed = time.time() - start_time
+        print(f'✅ 训练完成，耗时 {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
+        print(f'🏆 最佳验证集准确率: {best_acc:.4f}')
+
+  
+        # --- 5. 保存模型 ---
+        model.load_state_dict(best_model_wts)
+        torch.save(model.state_dict(), self.model_save_path)
+        print(f"💾 PyTorch 模型已保存: {self.model_save_path}")
+
+        # --- 6. 导出 ONNX (供 C++ 使用) ---
+        self._export_onnx(model)
+
+    def _export_onnx(self, model):
+        model.eval()
+        # ⚠️ 注意：ONNX 导出时的输入分辨率必须与训练时一致 (448x448)
+        dummy_input = torch.randn(1, 3, 448, 448).to(self.device)
+        try:
+            print("[torch.onnx] Starting ONNX export...")
+            torch.onnx.export(
+                model,
+                dummy_input,
+                self.onnx_save_path,
+                input_names=['input'],
+                output_names=['output'],
+                # dynamic_shapes=False, # ❌ 这是一个错误的参数，之前导致了导出失败
+                opset_version=18  # 使用更通用的 opset 11
+            )
+            print(f"📦 ONNX 模型已导出: {self.onnx_save_path}")
+        except Exception as e:
+            print("❌ ONNX 导出失败: 以下是详细错误信息")
+            print(e)
+            print("\n建议检查以下内容:")
+            print("1. 模型的输入/输出是否符合 ONNX 要求。")
+            print("2. 是否有不支持 ONNX 的层或操作。")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    # ================= 整合后的路径配置 =================
+    # 默认指向 AOI_Integrated/data/dataset_review/train
+    default_data_dir = r'e:\Code\AOI_Integrated\data\dataset_review\train'
+    # 默认模型保存到 AOI_Integrated/models/resnet
+    default_save_dir = r'e:\Code\AOI_Integrated\models\resnet'
+
+    parser.add_argument('--data_dir', type=str, default=default_data_dir, help='训练数据根目录')
+    parser.add_argument('--save_dir', type=str, default=default_save_dir, help='模型保存目录')
+    parser.add_argument('--epochs', type=int, default=50, help='训练轮数')
+
+    args = parser.parse_args()
+
+    trainer = ReviewModelTrainer(args.data_dir, args.save_dir, num_epochs=args.epochs)
+    trainer.train()
+```
 
