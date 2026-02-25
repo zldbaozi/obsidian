@@ -1116,6 +1116,7 @@ class ReviewModelTrainer:
         # 可能是数据不够支撑 Layer3 的参数调整，导致震荡。
         # 策略：回退到只微调 Layer4 + FC，但给予更大的自由度
         model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        
         for name, param in model.named_parameters():
             if "layer4" in name or "fc" in name:
                 param.requires_grad = True
@@ -1125,8 +1126,7 @@ class ReviewModelTrainer:
         num_ftrs = model.fc.in_features
         # 🔥 优化2：稍微增加一点非线性，帮助拟合复杂边界
         # 全连接层: Linear -> ReLU -> Dropout -> Linear
-
-        model.fc = nn.Sequential(
+		model.fc = nn.Sequential(
             nn.Linear(num_ftrs, 128),
             nn.ReLU(),
             nn.Dropout(0.2), # 轻微 Dropout 防止过拟合
@@ -1144,9 +1144,11 @@ class ReviewModelTrainer:
   
     def train(self):
         print(f"[System] 使用设备: {self.device}")
+        
         # --- 1. 数据增强 ---
         # 🔧 调整: 224 可能导致微小缺陷丢失，提升分辨率至 448
         target_size = (448, 448)
+        
         # 🔥 优化3：极简增强策略
         # 移除了所有可能破坏小缺陷的操作 (ColorJitter, Erasing)
         # 仅保留翻转和旋转，这是最安全的。
@@ -1174,6 +1176,7 @@ class ReviewModelTrainer:
             return
 
         full_dataset = datasets.ImageFolder(self.data_root, data_transforms['train'])
+        
         class_to_idx = full_dataset.class_to_idx
         print(f"🗂️ 类别映射: {class_to_idx}")
 
@@ -1181,6 +1184,7 @@ class ReviewModelTrainer:
         total_size = len(full_dataset)
         train_size = int(0.8 * total_size)
         val_size = total_size - train_size
+        
         if total_size < 5:
             print("❌ 数据太少，无法训练。")
             return
@@ -1190,18 +1194,21 @@ class ReviewModelTrainer:
         indices = torch.randperm(total_size).tolist()
         train_indices_list = indices[:train_size]
         val_indices_list = indices[train_size:]
+        
         train_dataset = torch.utils.data.Subset(full_dataset, train_indices_list)
         val_dataset = torch.utils.data.Subset(full_dataset, val_indices_list)
+        
         # === 🔥 关键修复：使用 WeightedRandomSampler 解决不平衡 ===
         print("⚖️ 正在计算采样权重 (WeightedRandomSampler)...")
         # 获取训练集中的所有标签
         train_indices = train_dataset.indices
         train_labels = [full_dataset.targets[i] for i in train_indices]
+        
         count_0 = train_labels.count(0) # false_ng
         count_1 = train_labels.count(1) # real_ng
-
         print(f"   - 假报警(False NG): {count_0} 张")
         print(f"   - 真缺陷(Real NG) : {count_1} 张")
+        
         sampler = None
         if count_0 > 0 and count_1 > 0:
             # 计算样本权重：数量少的样本权重高
@@ -1224,7 +1231,6 @@ class ReviewModelTrainer:
   
         # --- 3. 准备模型 ---
         model = self._get_start_model()
-
 
         # 🔥 标准交叉熵
         # 移除 Label Smoothing，强制模型追求更极端的概率 (0或1)，这会把 LOSS 往下压
@@ -1257,7 +1263,6 @@ class ReviewModelTrainer:
             for phase in ['train', 'val']:
                 if phase == 'train':
                     model.train()
-
                 else:
                     model.eval()
 
@@ -1270,25 +1275,19 @@ class ReviewModelTrainer:
                     inputs = inputs.to(self.device)
                     labels = labels.to(self.device)
 
-  
                     optimizer.zero_grad()
 
-  
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = model(inputs)
                         _, preds = torch.max(outputs, 1)
                         loss = criterion(outputs, labels)
 
-
                         if phase == 'train':
                             loss.backward()
                             optimizer.step()
 
-
                     running_loss += loss.item() * inputs.size(0)
                     running_corrects += torch.sum(preds == labels.data)
-
-  
 
                 if phase == 'train':
                     scheduler.step()
