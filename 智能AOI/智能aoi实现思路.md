@@ -1115,7 +1115,7 @@ class ReviewModelTrainer:
         os.makedirs(save_dir, exist_ok=True)
 
     def _get_start_model(self):
-        # ������ 优化1：解冻策略调整
+        # 优化1：解冻策略调整
         # Loss 难以突破 0.4，说明模型在这里卡住了。
         # 可能是数据不够支撑 Layer3 的参数调整，导致震荡。
         # 策略：回退到只微调 Layer4 + FC，但给予更大的自由度
@@ -1128,9 +1128,14 @@ class ReviewModelTrainer:
                 param.requires_grad = False
 
         num_ftrs = model.fc.in_features
-        # ������ 优化2：恢复从前的极简结构
-        # 既然你对上一个模型(Linear)很满意，我们就保持这个结构，方便 Resume
-        model.fc = nn.Linear(num_ftrs, 2)
+        # 优化2：稍微增加一点非线性，帮助拟合复杂边界
+        # 全连接层: Linear -> ReLU -> Dropout -> Linear
+        model.fc = nn.Sequential(
+            nn.Linear(num_ftrs, 128),  # 1. 降维并重组特征
+            nn.ReLU(),                 # 2. 引入非线性 (关键!)
+            nn.Dropout(0.2),           # 3. 防止过拟合
+            nn.Linear(128, 2)          # 4. 最终分类
+)
 
         # 2. 增量学习逻辑
         if self.resume and os.path.exists(self.model_save_path):
@@ -1147,10 +1152,10 @@ class ReviewModelTrainer:
         print(f"[System] 使用设备: {self.device}")
 
         # --- 1. 数据增强 ---
-        # ������ 调整: 224 可能导致微小缺陷丢失，提升分辨率至 448
+        # 调整: 224 可能导致微小缺陷丢失，提升分辨率至 448
         target_size = (448, 448)
 
-        # ������ 优化3：极简增强策略
+        # 优化3：极简增强策略
         # 移除了所有可能破坏小缺陷的操作 (ColorJitter, Erasing)
         # 仅保留翻转和旋转，这是最安全的。
         data_transforms = {
@@ -1190,7 +1195,7 @@ class ReviewModelTrainer:
             print("❌ 数据太少，无法训练。")
             return
 
-        # ������ 修改：显式打乱并划分，确保随机性
+        # 修改：显式打乱并划分，确保随机性
         print("������ 正在执行全局随机打乱 (Manual Shuffle)...")
         indices = torch.randperm(total_size).tolist()
         train_indices_list = indices[:train_size]
@@ -1199,7 +1204,7 @@ class ReviewModelTrainer:
         train_dataset = torch.utils.data.Subset(full_dataset, train_indices_list)
         val_dataset = torch.utils.data.Subset(full_dataset, val_indices_list)
 
-        # === ������ 关键修复：使用 WeightedRandomSampler 解决不平衡 ===
+        # === 关键修复：使用 WeightedRandomSampler 解决不平衡 ===
         print("⚖️ 正在计算采样权重 (WeightedRandomSampler)...")
         # 获取训练集中的所有标签
         train_indices = train_dataset.indices
@@ -1232,11 +1237,11 @@ class ReviewModelTrainer:
         # --- 3. 准备模型 ---
         model = self._get_start_model()
 
-        # ������ 标准交叉熵
+        # 标准交叉熵
         # 移除 Label Smoothing，强制模型追求更极端的概率 (0或1)，这会把 LOSS 往下压
         criterion = nn.CrossEntropyLoss()
 
-        # ������ 优化4：使用 AdamW + OneCycleLR
+        # 优化4：使用 AdamW + OneCycleLR
         # Loss卡住时，通常需要一个较大的学习率冲击来跳出局部最优
         # AdamW 对于这种非凸问题通常收敛更快更低
         optimizer = optim.AdamW([
@@ -1244,7 +1249,7 @@ class ReviewModelTrainer:
             {'params': model.fc.parameters(), 'lr': 1e-3},     # 全连接
         ], weight_decay=1e-3)
 
-        # ������ 优化5：OneCycleLR 策略
+        # 优化5：OneCycleLR 策略
         # 先快速上升 LR 再缓慢下降，非常适合这种训练不足的情况
         scheduler = optim.lr_scheduler.OneCycleLR(optimizer,
                                                   max_lr=[1e-4, 1e-3],
@@ -1354,4 +1359,6 @@ if __name__ == "__main__":
 
     trainer = ReviewModelTrainer(args.data_dir, args.save_dir, num_epochs=args.epochs)
     trainer.train()
+
+
 ```
