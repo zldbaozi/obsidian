@@ -1297,8 +1297,10 @@ class ReviewModelTrainer:
                 epoch_loss = running_loss / dataset_sizes[phase]
                 epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
-                # 打印详细日志，监控是否存在过拟合/欠拟合
-                print(f'Epoch {epoch+1}/{self.num_epochs} | {phase.upper()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+				# 打印详细日志，监控是否存在过拟合/欠拟合
+                # 获取当前学习率用于监控
+                current_lr = optimizer.param_groups[1]['lr']
+                print(f'Epoch {epoch+1}/{self.num_epochs} | {phase.upper()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f} | LR: {current_lr:.2e}')
 
                 # 只有 validation 更好时才更新最佳模型
                 if phase == 'val':
