@@ -1219,7 +1219,7 @@ class ReviewModelTrainer:
         if count_0 > 0 and count_1 > 0:
             # 计算样本权重：数量少的样本权重高
             weight_0 = 1.0 / count_0
-            weight_1 = 1.0 / count_1
+            weight_1 = (1.0 / count_1) * 1.5
             samples_weights = [weight_0 if label == 0 else weight_1 for label in train_labels]
             sampler = WeightedRandomSampler(convert_to_tensor_if_needed(samples_weights), num_samples=len(samples_weights), replacement=True)
             print(f"   - ✅ 已启用过采样策略，每个 Batch 将包含均衡的正负样本")
@@ -1273,6 +1273,10 @@ class ReviewModelTrainer:
                 running_loss = 0.0
                 running_corrects = 0
 
+                # 用于计算各类别的召回率
+                all_preds = []
+                all_labels = []
+
                 for inputs, labels in dataloaders[phase]:
                     inputs = inputs.to(self.device)
                     labels = labels.to(self.device)
@@ -1291,14 +1295,28 @@ class ReviewModelTrainer:
                     running_loss += loss.item() * inputs.size(0)
                     running_corrects += torch.sum(preds == labels.data)
 
+					# 收集预测结果
+                    all_preds.extend(preds.cpu().numpy())
+                    all_labels.extend(labels.cpu().numpy())
+
                 if phase == 'train':
                     scheduler.step()
 
                 epoch_loss = running_loss / dataset_sizes[phase]
                 epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
+				# 计算召回率
+				# label 0: false_ng (良品), label 1: real_ng (缺陷)
+                from sklearn.metrics import recall_score
+				# average=None 返回每一类的 recall
+                recalls = recall_score(all_labels, all_preds, average=None, labels=[0, 1], zero_division=0)
+                recall_0 = recalls[0] # 良品召回率 (真良品被预测为良品的比例)
+                recall_1 = recalls[1] # 缺陷召回率 (真缺陷被预测为缺陷的比例) - 关键指标
+
                 # 打印详细日志，监控是否存在过拟合/欠拟合
-                print(f'Epoch {epoch+1}/{self.num_epochs} | {phase.upper()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+				# 获取当前学习率用于监控
+                current_lr = optimizer.param_groups[1]['lr']
+                print(f'Epoch {epoch+1}/{self.num_epochs} | {phase.upper()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f} | Recall_FG(良品): {recall_0:.4f} Recall_NG(缺陷): {recall_1:.4f} | LR: {current_lr:.2e}')
 
                 # 只有 validation 更好时才更新最佳模型
                 if phase == 'val':
