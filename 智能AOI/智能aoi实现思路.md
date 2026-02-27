@@ -1219,7 +1219,7 @@ class ReviewModelTrainer:
         if count_0 > 0 and count_1 > 0:
             # 计算样本权重：数量少的样本权重高
             weight_0 = 1.0 / count_0
-            weight_1 = (1.0 / count_1)*1.5
+            weight_1 = (1.0 / count_1) * 1.5
             samples_weights = [weight_0 if label == 0 else weight_1 for label in train_labels]
             sampler = WeightedRandomSampler(convert_to_tensor_if_needed(samples_weights), num_samples=len(samples_weights), replacement=True)
             print(f"   - ✅ 已启用过采样策略，每个 Batch 将包含均衡的正负样本")
