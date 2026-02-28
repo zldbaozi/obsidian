@@ -1378,7 +1378,4 @@ if __name__ == "__main__":
     trainer = ReviewModelTrainer(args.data_dir, args.save_dir, num_epochs=args.epochs)
     trainer.train()
 
-
-
-
 ```
