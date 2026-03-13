@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "智能AOI/智能aoi实现思路.md",
+                "file": "智能AOI/智能AOI实现思路.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "智能aoi实现思路"
+              "title": "智能AOI实现思路"
             }
           }
         ],
@@ -212,8 +212,9 @@
   },
   "active": "65e12a9f1d41fa8a",
   "lastOpenFiles": [
+    "智能AOI/复判逻辑实现思路.md",
+    "智能AOI/智能AOI实现思路.md",
     "CMake.md",
-    "智能AOI/智能aoi实现思路.md",
     "未命名",
     "markdown语法/markdown语法.md",
     "欢迎.md",
